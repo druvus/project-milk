@@ -1,0 +1,7 @@
+# cluster.yaml - cluster configuration for my Snakefile.
+__default__:
+    partition: node
+    account: snic2018-8-244
+    time: 3:00:00
+    nodes: 1
+
