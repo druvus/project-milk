@@ -1,0 +1,53 @@
+# **** Variables ****
+
+#configfile: "config.yaml"
+
+
+# **** Imports ****
+
+import glob
+import datetime
+import os
+
+
+rule all:
+    input:
+        expand("{run}/kraken2/{sample}.report", sample=config['samples'], run=config['run_name']),
+#        expand("{run}/fastq/{sample}_R2.fastq.gz", sample=config['samples'], run=config['run_name']),
+
+
+rule kraken2:
+    input: 
+        r1="{run}/fastq/{sample}_R1.fastq.gz",
+        r2="{run}/fastq/{sample}_R2.fastq.gz"
+    output: 
+        kraken2report="{run}/kraken2/{sample}.report",
+        kraken2output="{run}/kraken2/{sample}.kraken",
+    params:
+        kraken_db=config['kraken_db']
+    message: "Classifying read file pairs with kraken2:\nR1: {input.r1}\nR2: {input.r2}"
+    threads: config['threads']
+    shell:
+        """
+        kraken2 --paired --fastq-input --gzip-compressed --threads {threads} --db  {params.kraken_db} --report {output.kraken2report}  --output {output.kraken2output} {input.r1} {input.r2}
+        """
+
+rule concatenate:
+    input: 
+        l1r1 = lambda wildcards: glob.glob("{directory}/{sample}_L001_R1_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        l1r2 = lambda wildcards: glob.glob("{directory}/{sample}_L001_R2_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        l2r1 = lambda wildcards: glob.glob("{directory}/{sample}_L002_R1_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        l2r2 = lambda wildcards: glob.glob("{directory}/{sample}_L002_R2_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample))
+
+    output: 
+        r1="{run}/fastq/{sample}_R1.fastq.gz",
+        r2="{run}/fastq/{sample}_R2.fastq.gz"
+    message: "Concatenate read pairs from different lanes:\nR1:\n{input.l1r1}\n{input.l2r1}\nR2:\n{input.l1r2}\n{input.l2r2}"
+    threads: config['threads']
+    shell:
+        """
+        cat {input.l1r1} {input.l2r1}  > {output.r1}
+        cat {input.l1r2} {input.l2r2}  > {output.r2}
+        """
+
+
