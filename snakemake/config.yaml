@@ -1,12 +1,35 @@
 # number of threads for multi-threaded applications - overriden by -j option to snakemake
-threads: 12
+threads: 20
 
 # Directory where the raw reads are stored
-read_directory: "fastq"
+read_directory: "/proj/uppstore2018141/INBOX/RA-1695/180704_A00181_0042_BHFLYCDMXX"
 
 # Unique sample descriptors - should be in the file names
-samples: ["GCF_000007845", "GCF_000008045", "GCF_000008865", "GCF_000174395", "GCF_000195995"]
+samples: [
+"124_S7",
+"175_S8",
+"17_S1",
+"211_S9",
+"238_S10",
+"261_S21",
+"273_S11",
+"297_S12",
+"29_S2",
+"321_S13",
+"328_S14",
+"329_S15",
+"333_S16",
+"350_S17",
+"351_S18",
+"353_S22",
+"367_S19",
+"370_S20",
+"38_S3",
+"45_S4",
+"61_S5",
+"76_S6"
+]
 
 run_name: "arla"
 
-kraken_db: "/powervault/davsun/projects/2018/b2forensics/data/database/scratch/kraken_base_bacteria_db"
+kraken_db: "/proj/uppstore2018141/database/kraken-standard"

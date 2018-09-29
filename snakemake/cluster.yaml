@@ -2,6 +2,6 @@
 __default__:
     partition: node
     account: snic2018-8-244
-    time: 3:00:00
+    time: 2:00:00
     nodes: 1
-
+    cores: 20
