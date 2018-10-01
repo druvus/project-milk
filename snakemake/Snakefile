@@ -13,13 +13,62 @@ import os
 rule all:
     input:
         expand("{run}/kraken2/{sample}.report", sample=config['samples'], run=config['run_name']),
-#        expand("{run}/fastq/{sample}_R2.fastq.gz", sample=config['samples'], run=config['run_name']),
+        expand("{run}/fastq-clean/{sample}_paired_1.fastq", sample=config['samples'], run=config['run_name']),
+        expand("{kneaddata_humangenome}/Homo_sapiens.1.bt2", kneaddata_humangenome=config['kneaddata_humangenome']),
+
+rule kneaddata_download_humangenome:
+    output:
+        bowtieindex="{kneaddata_humangenome}/Homo_sapiens.1.bt2",
+    params:
+        folder=config['kneaddata_humangenome']
+    message: "Downloading kneaddata human genome files"
+    threads: 1
+    shell:
+        """
+        kneaddata_database --download human_genome bowtie2 {params.folder}
+        """
+
+rule kneaddata:
+    input:
+        r1="{run}/fastq/{sample}_R1.fastq.gz",
+        r2="{run}/fastq/{sample}_R2.fastq.gz",
+        bowtieindex=expand("{kneaddata_humangenome}/Homo_sapiens.1.bt2", kneaddata_humangenome=config['kneaddata_humangenome']),
+    output:
+        r1="{run}/fastq-clean/{sample}_paired_1.fastq",
+        r2="{run}/fastq-clean/{sample}_paired_2.fastq",
+    params:
+        folder="{run}/fastq-clean/",
+        prefix="{sample}"
+    message: "Removing human reads:\nR1: {input.r1}\nR2: {input.r2}"
+    threads: config['threads']
+    shell:
+        """
+        kneaddata --input {input.r1} --input {input.r2} -db {input.bowtieindex} --output  {params.folder} --output-prefix {params.prefix} --trimmomatic ~/miniconda3/envs/arla/share/trimmomatic-0.36-3/ -t {threads} --max-memory 4000m --remove-intermediate-output
+        """
+
+
+rule kneaddata_compress:
+    input:
+        r1="{run}/fastq-clean/{sample}_paired_1.fastq",
+        r2="{run}/fastq-clean/{sample}_paired_2.fastq"
+    output:
+        r1="{run}/fastq-clean/{sample}_paired_1.fastq.gz",
+        r2="{run}/fastq-clean/{sample}_paired_2.fastq.gz",
+    message: "Compressing file:\nR1: {input.r1}\nR2: {input.r2}"
+    threads: config['threads']
+    shell:
+        """
+        pigz -p {threads} {input.r1} 
+        pigz -p {threads} {input.r2}
+        """
 
 
 rule kraken2:
     input: 
-        r1="{run}/fastq/{sample}_R1.fastq.gz",
-        r2="{run}/fastq/{sample}_R2.fastq.gz"
+#        r1="{run}/fastq/{sample}_R1.fastq.gz",
+#        r2="{run}/fastq/{sample}_R2.fastq.gz"
+        r1="{run}/fastq-clean/{sample}_paired_1.fastq.gz",
+        r2="{run}/fastq-clean/{sample}_paired_2.fastq.gz"
     output: 
         kraken2report="{run}/kraken2/{sample}.report",
         kraken2output="{run}/kraken2/{sample}.kraken",
@@ -43,7 +92,7 @@ rule concatenate:
         r1="{run}/fastq/{sample}_R1.fastq.gz",
         r2="{run}/fastq/{sample}_R2.fastq.gz"
     message: "Concatenate read pairs from different lanes:\nR1:\n{input.l1r1}\n{input.l2r1}\nR2:\n{input.l1r2}\n{input.l2r2}"
-    threads: config['threads']
+    threads: 1
     shell:
         """
         cat {input.l1r1} {input.l2r1}  > {output.r1}

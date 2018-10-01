@@ -33,3 +33,4 @@ samples: [
 run_name: "arla"
 
 kraken_db: "/proj/uppstore2018141/database/kraken-standard"
+kneaddata_humangenome: "/proj/uppstore2018141/database/kneaddata-humangenome"
