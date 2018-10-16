@@ -1,3 +1,4 @@
+
 # **** Variables ****
 
 #configfile: "config.yaml"
@@ -13,62 +14,73 @@ import os
 rule all:
     input:
         expand("{run}/kraken2/{sample}.report", sample=config['samples'], run=config['run_name']),
-        expand("{run}/fastq-clean/{sample}_paired_1.fastq", sample=config['samples'], run=config['run_name']),
-        expand("{kneaddata_humangenome}/Homo_sapiens.1.bt2", kneaddata_humangenome=config['kneaddata_humangenome']),
+        expand("{run}/fastq-final/{sample}_R1_trimmed.fastq.gz", sample=config['samples'], run=config['run_name']),
 
-rule kneaddata_download_humangenome:
-    output:
-        bowtieindex="{kneaddata_humangenome}/Homo_sapiens.1.bt2",
-    params:
-        folder=config['kneaddata_humangenome']
-    message: "Downloading kneaddata human genome files"
-    threads: 1
-    shell:
-        """
-        kneaddata_database --download human_genome bowtie2 {params.folder}
-        """
 
-rule kneaddata:
-    input:
-        r1="{run}/fastq/{sample}_R1.fastq.gz",
-        r2="{run}/fastq/{sample}_R2.fastq.gz",
-        bowtieindex=expand("{kneaddata_humangenome}/Homo_sapiens.1.bt2", kneaddata_humangenome=config['kneaddata_humangenome']),
+
+rule trimmomatic:
+    input: 
+        r1="{run}/fastq-clean/{sample}_clean_1.fastq.gz",
+        r2="{run}/fastq-clean/{sample}_clean_2.fastq.gz"
     output:
-        r1="{run}/fastq-clean/{sample}_paired_1.fastq",
-        r2="{run}/fastq-clean/{sample}_paired_2.fastq",
+        r1_paired =  "{run}/fastq-final/{sample}_R1_trimmed.fastq.gz",
+        r2_paired =  "{run}/fastq-final/{sample}_R2_trimmed.fastq.gz",
+        r1_unpaired =  "{run}/fastq-final/{sample}_R1_trimmed_unpaired.fastq.gz",
+        r2_unpaired =  "{run}/fastq-final/{sample}_R2_trimmed_unpaired.fastq.gz"
     params:
-        folder="{run}/fastq-clean/",
-        prefix="{sample}"
-    message: "Removing human reads:\nR1: {input.r1}\nR2: {input.r2}"
+        trim_params=config["trim_params"],
     threads: config['threads']
     shell:
         """
-        kneaddata --input {input.r1} --input {input.r2} -db {input.bowtieindex} --output  {params.folder} --output-prefix {params.prefix} --trimmomatic ~/miniconda3/envs/arla/share/trimmomatic-0.36-3/ -t {threads} --max-memory 4000m --remove-intermediate-output
+        trimmomatic PE -phred33 -threads {threads} {input.r1} {input.r2} {output.r1_paired} {output.r1_unpaired} {output.r2_paired} {output.r2_unpaired} {params.trim_params}
         """
 
 
-rule kneaddata_compress:
+rule kraken2_human:
     input:
-        r1="{run}/fastq-clean/{sample}_paired_1.fastq",
-        r2="{run}/fastq-clean/{sample}_paired_2.fastq"
+        r1="{run}/fastq/{sample}_R1.fastq.gz",
+        r2="{run}/fastq/{sample}_R2.fastq.gz"
     output:
-        r1="{run}/fastq-clean/{sample}_paired_1.fastq.gz",
-        r2="{run}/fastq-clean/{sample}_paired_2.fastq.gz",
+        kraken2report="{run}/kraken2-human/{sample}.report",
+#        kraken2output="{run}/kraken2-human/{sample}.kraken",
+        r1="{run}/fastq-clean/{sample}_clean_1.fastq",
+        r2="{run}/fastq-clean/{sample}_clean_2.fastq"
+
+    params:
+        kraken_db=config['kraken_humandb'], 
+        prefix="{run}/fastq-clean/{sample}_clean#.fastq"
+    message: "Classifying and filtering away human reads with kraken2:\nR1: {input.r1}\nR2: {input.r2}"
+    threads: config['threads']
+    shell:
+        """
+        kraken2 --paired --fastq-input --gzip-compressed --threads {threads} --db  {params.kraken_db} --report {output.kraken2report} --output - --unclassified-out {params.prefix} {input.r1} {input.r2}
+        """
+
+
+
+rule kraken2_fastq_compress:
+    input:
+        r1="{run}/fastq-clean/{sample}_clean_1.fastq",
+        r2="{run}/fastq-clean/{sample}_clean_2.fastq"
+    output:
+        r1="{run}/fastq-clean/{sample}_clean_1.fastq.gz",
+        r2="{run}/fastq-clean/{sample}_clean_2.fastq.gz",
     message: "Compressing file:\nR1: {input.r1}\nR2: {input.r2}"
     threads: config['threads']
     shell:
         """
         pigz -p {threads} {input.r1} 
         pigz -p {threads} {input.r2}
+        
         """
 
 
 rule kraken2:
     input: 
-#        r1="{run}/fastq/{sample}_R1.fastq.gz",
-#        r2="{run}/fastq/{sample}_R2.fastq.gz"
-        r1="{run}/fastq-clean/{sample}_paired_1.fastq.gz",
-        r2="{run}/fastq-clean/{sample}_paired_2.fastq.gz"
+        r1="{run}/fastq-final/{sample}_R1_trimmed.fastq.gz",
+        r2="{run}/fastq-final/{sample}_R2_trimmed.fastq.gz"
+#        r1="{run}/fastq-clean/{sample}_clean_1.fastq.gz",
+#        r2="{run}/fastq-clean/{sample}_clean_2.fastq.gz"
     output: 
         kraken2report="{run}/kraken2/{sample}.report",
         kraken2output="{run}/kraken2/{sample}.kraken",
@@ -98,5 +110,3 @@ rule concatenate:
         cat {input.l1r1} {input.l2r1}  > {output.r1}
         cat {input.l1r2} {input.l2r2}  > {output.r2}
         """
-
-
