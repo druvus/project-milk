@@ -1,8 +1,8 @@
 # number of threads for multi-threaded applications - overriden by -j option to snakemake
-threads: 16
+threads: 20
 
 # Directory where the raw reads are stored
-read_directory: "/proj/uppstore2018141/analysis/arla-preprocess/fastq-final"
+read_directory: "/proj/uppstore2018141/INBOX/RA-1695/180704_A00181_0042_BHFLYCDMXX"
 
 # Unique sample descriptors - should be in the file names
 samples: [
@@ -30,23 +30,9 @@ samples: [
 "76_S6"
 ]
 
-run_name: "arla-assembly"
+run_name: "arla-preprocess"
 
 kraken_db: "/proj/uppstore2018141/database/kraken-standard"
 kraken_humandb:  "/proj/uppstore2018141/database/kraken-human"
-centrifuge_db: "/proj/uppstore2018158/databases/centrifuge/nt/nt"
-
 
 trim_params: "ILLUMINACLIP:/home/andresj/miniconda3/envs/arla/share/trimmomatic-0.36-3/adapters/TruSeq3-PE.fa:2:15:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:50"
-
-abricate_db: [
-  #"abcricate",
-  "argannot",
-  "card",
-  "ecoh",
-  "ecoli_vf",
-  "ncbi",
-  "plasmidfinder",
-  "resfinder",
-  "vfdb"
-]

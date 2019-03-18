@@ -10,103 +10,263 @@ import glob
 import datetime
 import os
 
+#############################
+def create_megahit_read_input_str(unit):
+    if len(unit) == 2:
+        return "-1 {unit[0]} -2 {unit[1]}".format(unit=unit)
+    elif len(unit) == 1:
+        return "-r {unit[0]}".format(unit=unit)
+    else:
+        raise(Exception("Units should either be paired library or single read library."))
+
+
+
+def create_megahit_coassembly_read_input_str(units):
+    reads = []
+    for i, unit in enumerate(units):
+        reads.append(unit)
+    read_string = ",".join(reads)
+    return read_string
+
+
+#############################
+
+
 
 rule all:
     input:
-        expand("{run}/kraken2/{sample}.report", sample=config['samples'], run=config['run_name']),
-        expand("{run}/fastq-final/{sample}_R1_trimmed.fastq.gz", sample=config['samples'], run=config['run_name']),
+        #expand("{run}/assembly/megahit/{sample}/{sample}.contigs.fa.gz", sample=config['samples'], run=config['run_name']),
+        #expand("{run}/anvio/anvio.contigs.1.bt2", sample=config['samples'], run=config['run_name']),
+        expand("{run}/anvio/bowtie2/{sample}_anvio.bam", sample=config['samples'], run=config['run_name']),
+        expand("{run}/anvio/anvio.db", sample=config['samples'], run=config['run_name']),
+        expand("{run}/centrifuge/{sample}.kreport", sample=config['samples'], run=config['run_name']),
+        expand("{run}/anvio/cfuge/contigs.kreport", sample=config['samples'], run=config['run_name']),
+        #expand("{run}/metaphlan2/{sample}_results.txt", sample=config['samples'], run=config['run_name']),
+        expand("{run}/abricate/{sample}_abricate_vfdb.txt", sample=config['samples'], run=config['run_name'])
 
 
-
-rule trimmomatic:
-    input: 
-        r1="{run}/fastq-clean/{sample}_clean_1.fastq.gz",
-        r2="{run}/fastq-clean/{sample}_clean_2.fastq.gz"
-    output:
-        r1_paired =  "{run}/fastq-final/{sample}_R1_trimmed.fastq.gz",
-        r2_paired =  "{run}/fastq-final/{sample}_R2_trimmed.fastq.gz",
-        r1_unpaired =  "{run}/fastq-final/{sample}_R1_trimmed_unpaired.fastq.gz",
-        r2_unpaired =  "{run}/fastq-final/{sample}_R2_trimmed_unpaired.fastq.gz"
-    params:
-        trim_params=config["trim_params"],
-    threads: config['threads']
-    shell:
-        """
-        trimmomatic PE -phred33 -threads {threads} {input.r1} {input.r2} {output.r1_paired} {output.r1_unpaired} {output.r2_paired} {output.r2_unpaired} {params.trim_params}
-        """
-
-
-rule kraken2_human:
+rule metaphlan2:
     input:
-        r1="{run}/fastq/{sample}_R1.fastq.gz",
-        r2="{run}/fastq/{sample}_R2.fastq.gz"
+        index="{run}/anvio/anvio.contigs.1.bt2",
+        r1 = lambda wildcards: glob.glob("{directory}/{sample}_R1_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        r2 = lambda wildcards: glob.glob("{directory}/{sample}_R2_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample))
     output:
-        kraken2report="{run}/kraken2-human/{sample}.report",
-#        kraken2output="{run}/kraken2-human/{sample}.kraken",
-        r1="{run}/fastq-clean/{sample}_clean_1.fastq",
-        r2="{run}/fastq-clean/{sample}_clean_2.fastq"
-
-    params:
-        kraken_db=config['kraken_humandb'], 
-        prefix="{run}/fastq-clean/{sample}_clean#.fastq"
-    message: "Classifying and filtering away human reads with kraken2:\nR1: {input.r1}\nR2: {input.r2}"
+        result="{run}/metaphlan2/{sample}_results.txt",
+        bowtie2="{run}/metaphlan2/{sample}_bowtie2.bz2",
+    message: "Running metaphlan2:\nR1:\n{input.r1}\nR2:\n{input.r2}\n"
     threads: config['threads']
     shell:
         """
-        kraken2 --paired --fastq-input --gzip-compressed --threads {threads} --db  {params.kraken_db} --report {output.kraken2report} --output - --unclassified-out {params.prefix} {input.r1} {input.r2}
+        conda activate metaphlan2
+        metaphlan2.py {input.r1},{input.r2} -o {output.result} --input_type multifastq --nproc {threads} --bowtie2out {output.bowtie2}
+        conda deactivate
         """
 
-
-
-rule kraken2_fastq_compress:
+rule megahit_assembly:
     input:
-        r1="{run}/fastq-clean/{sample}_clean_1.fastq",
-        r2="{run}/fastq-clean/{sample}_clean_2.fastq"
+        r1 = lambda wildcards: glob.glob("{directory}/{sample}_R1_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        r2 = lambda wildcards: glob.glob("{directory}/{sample}_R2_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample))
+#        r1 = expand("{directory}/{sample}_R1_trimmed.fastq.gz".format(directory=config["read_directory"], sample=config["samples"])),
+#        r2 = expand("{directory}/{sample}_R2_trimmed.fastq.gz".format(directory=config["read_directory"], sample=config["samples"]))
     output:
-        r1="{run}/fastq-clean/{sample}_clean_1.fastq.gz",
-        r2="{run}/fastq-clean/{sample}_clean_2.fastq.gz",
-    message: "Compressing file:\nR1: {input.r1}\nR2: {input.r2}"
-    threads: config['threads']
-    shell:
-        """
-        pigz -p {threads} {input.r1} 
-        pigz -p {threads} {input.r2}
-        
-        """
-
-
-rule kraken2:
-    input: 
-        r1="{run}/fastq-final/{sample}_R1_trimmed.fastq.gz",
-        r2="{run}/fastq-final/{sample}_R2_trimmed.fastq.gz"
-#        r1="{run}/fastq-clean/{sample}_clean_1.fastq.gz",
-#        r2="{run}/fastq-clean/{sample}_clean_2.fastq.gz"
-    output: 
-        kraken2report="{run}/kraken2/{sample}.report",
-        kraken2output="{run}/kraken2/{sample}.kraken",
+        contigs="{run}/assembly/megahit/{sample}/{sample}.contigs.fa"
     params:
-        kraken_db=config['kraken_db']
-    message: "Classifying read file pairs with kraken2:\nR1: {input.r1}\nR2: {input.r2}"
+        folder="{run}/assembly/megahit/{sample}",
+        sample="{sample}"
+    message: "Assembly using megahit:\nR1:\n{input.r1}\nR2:\n{input.r2}\n"
     threads: config['threads']
     shell:
         """
-        kraken2 --paired --fastq-input --gzip-compressed --threads {threads} --db  {params.kraken_db} --report {output.kraken2report}  --output {output.kraken2output} {input.r1} {input.r2}
+        rm -r {params.folder}
+        megahit -1 {input.r2}  -2 {input.r2} --min-contig-len 2500 -m 0.85 -o {params.folder} -t {threads} --tmp-dir $SNIC_TMP --out-prefix {params.sample}
         """
 
-rule concatenate:
-    input: 
-        l1r1 = lambda wildcards: glob.glob("{directory}/{sample}_L001_R1_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
-        l1r2 = lambda wildcards: glob.glob("{directory}/{sample}_L001_R2_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
-        l2r1 = lambda wildcards: glob.glob("{directory}/{sample}_L002_R1_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
-        l2r2 = lambda wildcards: glob.glob("{directory}/{sample}_L002_R2_001.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample))
+rule megahit_pigz_assembly:
+    input:
+        contigs="{run}/assembly/megahit/{sample}/{sample}.contigs.fa"
+    output:
+        contigs="{run}/assembly/megahit/{sample}/{sample}.contigs.fa.gz"
+    message: "Compressing assembly\n{input.contigs}"
+    threads: config['threads']
+    shell:
+        """
+        pigz -p {threads} {input.contigs}
+        """
 
-    output: 
-        r1="{run}/fastq/{sample}_R1.fastq.gz",
-        r2="{run}/fastq/{sample}_R2.fastq.gz"
-    message: "Concatenate read pairs from different lanes:\nR1:\n{input.l1r1}\n{input.l2r1}\nR2:\n{input.l1r2}\n{input.l2r2}"
+rule megahit_coassembly:
+    input:
+        r1 = expand("{directory}/{sample}_R1_trimmed.fastq.gz", directory=config["read_directory"], sample=config["samples"]),
+        r2 = expand("{directory}/{sample}_R2_trimmed.fastq.gz", directory=config["read_directory"], sample=config["samples"])
+    output:
+        contigs="{run}/assembly/megahit-coassembly/final.contigs.fa"
+    params:
+        folder="{run}/assembly/megahit-coassembly/"
+    message: "Assembly using megahit:\nR1:\n{input.r1}\nR2:\n{input.r2}\n"
+    threads: config['threads']
+    run:
+        conc1=create_megahit_coassembly_read_input_str(input.r1)
+        conc2=create_megahit_coassembly_read_input_str(input.r2)
+        shell(
+            """
+            rm -r {params.folder}
+            megahit -1 {conc1} -2  {conc2} --min-contig-len 2500 -m 0.85 -o {params.folder} -t {threads} --tmp-dir $SNIC_TMP --continue
+            """)
+
+rule anvio_reformat:
+    input:
+        contigs="{run}/assembly/megahit-coassembly/final.contigs.fa"
+    output:
+        contigs="{run}/anvio/anvio.contigs.fa"
+    params:
+        folder="{run}/assembly/megahit-coassembly/"
+    message: "Reformatting fasta file:\nFile:\n{input.contigs}\n"
+    threads: config['threads']
+    shell:
+        """
+        anvi-script-reformat-fasta {input.contigs} -o {output.contigs} --min-len 2500 --simplify-names --report name_conversions.txt
+        """
+
+rule bowtie2_index:
+    input:
+        contigs="{run}/anvio/anvio.contigs.fa"
+    output:
+        index="{run}/anvio/anvio.contigs.1.bt2"
+    params:
+        prefix="{run}/anvio/anvio.contigs"
+    message: "Indexing fasta file:\nFile:\n{input.contigs}\n"
+    threads: config['threads']
+    shell:
+        """
+        bowtie2-build {input.contigs} {params.prefix}
+        """
+
+rule bowtie2_mapping:
+    input:
+        index="{run}/anvio/anvio.contigs.1.bt2",
+        r1 = lambda wildcards: glob.glob("{directory}/{sample}_R1_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        r2 = lambda wildcards: glob.glob("{directory}/{sample}_R2_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample))
+    output:
+        bam="{run}/anvio/bowtie2/{sample}_raw.bam"
+    params:
+        index="{run}/anvio/anvio.contigs",
+        prefix="{run}/anvio/{sample}_raw.bam"
+    message: "Mapping back reads using bowtie2:\nR1:\n{input.r1}\nR2:\n{input.r2}\n"
+    threads: config['threads']
+    shell:
+        """
+        bowtie2 --threads {threads} -x {params.index} -1 {input.r1} -2 {input.r2} | samtools view -F 4 -bS -  > {output.bam}
+        """
+
+rule anvi_init_bam:
+    input:
+        bam="{run}/anvio/bowtie2/{sample}_raw.bam"
+    output:
+        bam="{run}/anvio/bowtie2/{sample}_anvio.bam"
+    message: "fixing bam files:\nFile:\n{input.bam}\n"
+    threads: config['threads']
+    shell:
+        """
+        anvi-init-bam {input.bam} -o {output.bam}
+        """
+
+
+rule anvi_gen_contigs_database:
+    input:
+        contigs="{run}/anvio/anvio.contigs.fa"
+    output:
+        db="{run}/anvio/anvio.db"
+    message: "Init DB:\nFile:\n{output.db}\n"
+    threads: config['threads']
+    shell:
+        """
+        anvi-gen-contigs-database -f {input.contigs} -o {output.db}  -n 'Arla contig datbase' --kmer-size 4
+        """
+
+
+rule abricate:
+    input:
+        fasta="{run}/assembly/megahit/{sample}/{sample}.contigs.fa"
+    output:
+        argannot="{run}/abricate/{sample}_abricate_argannot.txt",
+        card="{run}/abricate/{sample}_abricate_card.txt",
+        ecoh="{run}/abricate/{sample}_abricate_ecoh.txt",
+        ecoli_vf="{run}/abricate/{sample}_abricate_ecoli_vf.txt",
+        ncbi="{run}/abricate/{sample}_abricate_ncbi.txt",
+        plasmidfinder="{run}/abricate/{sample}_abricate_plasmidfinder.txt",
+        resfinder="{run}/abricate/{sample}_abricate_resfinder.txt",
+        vfdb="{run}/abricate/{sample}_abricate_vfdb.txt"
+    params:
+        prefix="{sample}"
+    message: "Analysing using abricate:\nSample id: {params.prefix}"
     threads: 1
     shell:
         """
-        cat {input.l1r1} {input.l2r1}  > {output.r1}
-        cat {input.l1r2} {input.l2r2}  > {output.r2}
+        abricate --db argannot {input.fasta} > {output.argannot}
+        abricate --db card {input.fasta} > {output.card}
+        abricate --db ecoh {input.fasta} > {output.ecoh}
+        abricate --db ecoli_vf {input.fasta} > {output.ecoli_vf}
+        abricate --db ncbi {input.fasta} > {output.ncbi}
+        abricate --db plasmidfinder {input.fasta} > {output.plasmidfinder}
+        abricate --db resfinder {input.fasta} > {output.resfinder}
+        abricate --db vfdb {input.fasta} > {output.vfdb}
+
         """
+
+rule centrifuge:
+    input:
+        r1 = lambda wildcards: glob.glob("{directory}/{sample}_R1_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample)),
+        r2 = lambda wildcards: glob.glob("{directory}/{sample}_R2_trimmed.fastq.gz".format(directory=config["read_directory"], sample=wildcards.sample))
+    output:
+        centrifuge_output="{run}/centrifuge/{sample}.output",
+        centrifuge_report="{run}/centrifuge/{sample}.report",
+    params:
+        database=config['centrifuge_db']
+    message: "Classifying read file pairs with centrifuge :\nR1: {input.r1}\nR2: {input.r2}"
+    threads: config['threads']
+    run:
+        shell(
+            "centrifuge -p {threads} -x {params.database} -1 {input.r1} -2 {input.r2} -S {output.centrifuge_output} --report-file {output.centrifuge_report}"
+        )
+
+rule centrifuge_kreport:
+    input:
+        centrifuge_output = rules.centrifuge.output.centrifuge_output
+    output:
+        centrifuge_kraken_report="{run}/centrifuge/{sample}.kreport",
+    params:
+        database=config['centrifuge_db']
+    message: "Create kraken report from centrifuge"
+    threads: 1
+    run:
+        shell(
+            "centrifuge-kreport -x {params.database} {input.centrifuge_output} > {output.centrifuge_kraken_report}"
+        )
+
+rule centrifuge_contigs:
+    input:
+        contigs = "{run}/anvio/anvio.contigs.fa"
+    output:
+        centrifuge_output="{run}/anvio/cfuge/contigs.output",
+        centrifuge_report="{run}/anvio/cfuge/contigs.report",
+    params:
+        database=config['centrifuge_db']
+    message: "Classifying metagenomics contigs :\nFile: {input.contigs}\n"
+    threads: config['threads']
+    run:
+        shell(
+            "centrifuge -p {threads} -x {params.database} -U {input.contigs}  -S {output.centrifuge_output} --report-file {output.centrifuge_report}"
+        )
+
+rule centrifuge_kreport_contigs:
+    input:
+        centrifuge_output = "{run}/anvio/cfuge/contigs.output"
+    output:
+        centrifuge_kraken_report="{run}/anvio/cfuge/contigs.kreport",
+    params:
+        database=config['centrifuge_db']
+    message: "Create kraken report from centrifuge"
+    threads: 1
+    run:
+        shell(
+            "centrifuge-kreport -x {params.database} {input.centrifuge_output} > {output.centrifuge_kraken_report}"
+        )

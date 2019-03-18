@@ -2,9 +2,10 @@
 __default__:
     partition: node
     account: snic2018-8-244
-    time: '2:00:00'
+    time: '20:00:00'
     nodes: 1
-    cores: 20
+    cores: 16
+    M: snowy
 
 concatenate:
     partition: core
@@ -14,3 +15,28 @@ concatenate:
 trimmomatic:
     time: '10:00:00'
 
+spades:
+    time: '240:00:00'
+
+megahit_assembly:
+    time: '60:00:00'
+
+megahit_coassembly:
+    time: '180:00:00'
+    type: mem1TB
+
+megahit_pigz_assembly:
+    partition: core
+    cores: 5
+
+abricate:
+    partition: core
+    cores: 1
+
+centrifuge_kreport:
+    partition: core
+    cores: 1
+
+centrifuge_kreport_contigs:
+    partition: core
+    cores: 1
